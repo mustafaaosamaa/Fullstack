@@ -1,110 +1,121 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
-const Filter = ({ searchMatches, handleSearchFilterChange, results }) => {
-  return (
-    <div>
-      <div>Filter shown with: <input value={searchMatches} onChange={handleSearchFilterChange} /></div>
-      <div>{results}</div>
-    </div>
-  )
-}
-
-const PersonForm = ({ addName, newName, handleNameChange, newNumber, handleNumberChange }) => {
-  return (
-    <form onSubmit={addName}>
-      <div> Name: <input value={newName} onChange={handleNameChange} /> </div>
-      <div> Number: <input value={newNumber} onChange={handleNumberChange} /> </div>
-      <div>
-        <button type="submit">add</button>
-      </div>
-    </form>
-  )
-}
-
-const Persons = ({persons}) => {
-  return (
-    <div>
-      {persons.map(person => <p key={person.id}>{person.name} {person.number}</p>)}
-    </div>
-  )
-}
+import Persons from './components/Persons.jsx'
+import PersonForm from './components/PersonForm.jsx'
+import Filter from './components/Filter.jsx'
+import Notification from './components/Notification.jsx'
+import personService from './services/numbers'
 
 const App = () => {
-  const [persons, setPersons] = useState([
-    { name: 'Arto Hellas', number: '040-123456', id: 1 },
-    { name: 'Ada Lovelace', number: '39-44-5323523', id: 2 },
-    { name: 'Dan Abramov', number: '12-43-234345', id: 3 },
-    { name: 'Mary Poppendieck', number: '39-23-6423122', id: 4 }
-  ])
+  const [persons, setPersons] = useState([])
   const [newName, setNewName] = useState('')
   const [newNumber, setNewNumber] = useState('')
-  const [searchMatches, setSearchMatches] = useState('')
-  const [results, setResults] = useState('')
+  const [filter, setFilter] = useState('')
+  const [info, setInfo] = useState({ message: null })
 
-  const addName = (event) => {
+  useEffect(() => {
+    personService.getAll().then((initialPersons =>
+      setPersons(initialPersons)
+    ))
+  }, [])
+
+  const notifyWith = (message, type = 'info') => {
+    setInfo({
+      message, type
+    })
+
+    setTimeout(() => {
+      setInfo({ message: null })
+    }, 3000)
+  }
+
+  const cleanForm = () => {
+    setNewName('')
+    setNewNumber('')
+  }
+
+  const updatePerson = (person) => {
+    const ok = window.confirm(`${newName} is already added to phonebook, replace the number?`)
+    if (ok) {
+      personService
+        .update(person.id, { ...person, number: newNumber })
+        .then((updatedPerson) => {
+          setPersons(persons.map(p => p.id !== person.id ? p : updatedPerson))
+          notifyWith(`phone number of ${person.name} updated!`)
+        })
+        .catch(() => {
+          notifyWith(`${person.name} has already been removed`, 'error')
+          setPersons(persons.filter(p => p.id !== person.id))
+        })
+      cleanForm()
+    }
+  }
+
+  const addPerson = (event) => {
     event.preventDefault()
-    if (newName === '') {
-      alert('You need to insert the name')
+    const person = persons.find(p => p.name === newName)
+
+    if (person) {
+      updatePerson(person)
+      return
     }
-    else if (persons.some(person => person.name === newName)) {
-      alert(`${newName} is already added to the phonebook`)
-    }
-    else {
-      const newObject = {
-        name: newName,
-        number: newNumber,
-        id: persons.length + 1
-      }
-      setPersons(persons.concat(newObject))
-      setNewName('')
-      setNewNumber('')
+
+    personService.create({
+      name: newName,
+      number: newNumber
+    }).then(createdPerson => {
+      setPersons(persons.concat(createdPerson))
+      notifyWith(`${createdPerson.name} added!`)
+      cleanForm()
+    })
+  }
+
+  const removePerson = (person) => {
+    const ok = window.confirm(`remove ${person.name} from phonebook?`)
+    if (ok) {
+      personService
+        .remove(person.id)
+        .then(() => {
+          setPersons(persons.filter(p => p.id !== person.id))
+          notifyWith(`number of ${person.name} deleted!`)
+        })
     }
   }
 
-  const displayMatches = (name) => {
-    for (let i = 0; i < persons.length; i++) {
-      if (persons[i].name === name) {
-        setResults(`${persons[i].name} ${persons[i].number}`)
-        setSearchMatches('')
-      }
-    }
-  }
+  const byFilterField = p => p.name.toLowerCase().includes(filter.toLowerCase())
 
-  const handleNameChange = (event) => {
-    setNewName(event.target.value)
-  }
-
-  const handleNumberChange = (event) => {
-    setNewNumber(event.target.value)
-  }
-
-  const handleSearchFilterChange = (event) => {
-    setSearchMatches(event.target.value)
-    displayMatches(event.target.value)
-  }
+  const personsToShow = filter ? persons.filter(byFilterField) : persons
 
   return (
     <div>
       <h2>Phonebook</h2>
+
+      <Notification info={info} />
+
       <Filter
-        searchMatches={searchMatches}
-        handleSearchFilterChange={handleSearchFilterChange}
-        results={results}
+        filter={filter}
+        setFilter={setFilter}
       />
-      <h2>Add a New Contact</h2>
+
+      <h3>Add a new</h3>
+
       <PersonForm
-        addName={addName}
+        addPerson={addPerson}
         newName={newName}
-        handleNameChange={handleNameChange}
         newNumber={newNumber}
-        handleNumberChange={handleNumberChange}
+        setNewName={setNewName}
+        setNewNumber={setNewNumber}
       />
-      <h2>Numbers</h2>
+
+      <h3>Phone numbers</h3>
+
       <Persons
-        persons={persons}
+        persons={personsToShow}
+        removePerson={removePerson}
       />
     </div>
   )
+
 }
 
 export default App
